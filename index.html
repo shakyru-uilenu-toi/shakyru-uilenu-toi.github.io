@@ -855,67 +855,78 @@ footer .heart{margin-top:26px;font-size:12px;color:rgba(255,255,255,.4)}
   /* ---------- Ән (фондық музыка) ---------- */
   (function music(){
     var au = document.getElementById("bgm"), btn = document.getElementById("bgmBtn");
-    var VOL = 0.55, armed = false, killed = false;
+    var VOL = 0.55, killed = false, armed = false, fading = null;
 
-    /* файл жоқ болса — батырма мүлдем көрсетілмейді */
     function ready(){ if(!killed) btn.classList.add("ready"); }
     au.addEventListener("error", function(){ killed = true; btn.classList.remove("ready"); });
     ["loadeddata","canplay","canplaythrough","playing"].forEach(function(ev){
       au.addEventListener(ev, ready);
     });
-    if(au.readyState >= 2) ready();          /* оқиға ерте өтіп кетсе де */
+    if(au.readyState >= 2) ready();
+
+    /* дыбыс шынымен естіліп тұр ма — соны көрсетеміз */
+    function sync(){ btn.classList.toggle("paused", au.paused || au.muted); }
+    ["play","pause","volumechange"].forEach(function(ev){ au.addEventListener(ev, sync); });
 
     function fadeIn(){
-      au.volume = 0;
-      var t = setInterval(function(){
-        au.volume = Math.min(VOL, au.volume + 0.05);
-        if(au.volume >= VOL) clearInterval(t);
-      }, 90);
+      clearInterval(fading);
+      try { au.volume = 0; } catch(e){}          /* iOS-та volume өзгермейді — қалыпты жағдай */
+      fading = setInterval(function(){
+        try {
+          au.volume = Math.min(VOL, au.volume + 0.05);
+          if(au.volume >= VOL - 0.001) clearInterval(fading);
+        } catch(e){ clearInterval(fading); }
+      }, 80);
     }
+
+    /* 1-қадам: дыбыспен қосып көреміз */
     function start(){
       if(killed) return;
+      au.muted = false;
+      fadeIn();
       var p = au.play();
-      if(p && p.catch) p.catch(arm);          /* браузер тыйым салса — бірінші тиюді күтеміз */
-      else if(au.paused) arm();
+      if(p && p.catch) p.catch(silentStart);
+      else if(au.paused) silentStart();
     }
-    /* браузерлер дыбысты өздігінен қоспайды: алғашқы тиюде іске қосамыз */
+
+    /* 2-қадам: браузер рұқсат бермесе — үнсіз режимде ойнатып,
+       қонақ экранға тигізген сәтте дыбысты қосамыз (ән әлдеқашан жүріп жатады) */
+    function silentStart(){
+      au.muted = true;
+      var p = au.play();
+      if(p && p.catch) p.catch(function(){});
+      arm();
+    }
+
     function arm(){
       if(armed || killed) return;
       armed = true;
-      btn.classList.add("paused");
-      var go = function(){
-        au.play().then(function(){
-          btn.classList.remove("paused");
-        }).catch(function(){});
-        off();
-      };
-      var off = function(){
-        ["pointerdown","touchstart","keydown","scroll"].forEach(function(ev){
-          window.removeEventListener(ev, go);
-        });
-      };
-      ["pointerdown","touchstart","keydown","scroll"].forEach(function(ev){
-        window.addEventListener(ev, go, {once:false, passive:true});
-      });
+      var EV = ["pointerdown","touchstart","touchend","mousedown","keydown","click"];
+      function off(){ EV.forEach(function(ev){ window.removeEventListener(ev, go, true); }); }
+      function go(e){
+        if(btn.contains(e.target)) return;      /* батырманы өзі басса — оның логикасы бар */
+        au.muted = false;
+        fadeIn();
+        var p = au.play();
+        if(p && p.then) p.then(off).catch(function(){});   /* сәтсіз болса тыңдаушы қалады */
+        else if(!au.paused) off();
+      }
+      EV.forEach(function(ev){ window.addEventListener(ev, go, true); });
     }
 
-    au.addEventListener("play",  function(){ btn.classList.remove("paused"); });
-    au.addEventListener("pause", function(){ btn.classList.add("paused"); });
-
     btn.addEventListener("click", function(){
-      if(au.paused){ au.play().catch(function(){}); }
+      if(au.paused || au.muted){ au.muted = false; fadeIn(); au.play().catch(function(){}); }
       else { au.pause(); }
     });
 
-    /* бет жасырылса — тоқтатамыз, қайтып келгенде жалғастырамыз */
-    var wasPlaying = false;
+    var wasOn = false;
     document.addEventListener("visibilitychange", function(){
-      if(document.hidden){ wasPlaying = !au.paused; au.pause(); }
-      else if(wasPlaying){ au.play().catch(function(){}); }
+      if(document.hidden){ wasOn = !au.paused && !au.muted; au.pause(); }
+      else if(wasOn){ au.play().catch(function(){}); }
     });
 
-    fadeIn();
     start();
+    sync();
   })();
 
   /* ---------- WhatsApp ---------- */
