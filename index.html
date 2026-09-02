@@ -343,6 +343,37 @@ section{position:relative;padding:clamp(64px,9vw,120px) 0}
 .ok-msg .display{font-size:28px;color:var(--emerald)}
 .ok-msg p{font-size:14px;color:var(--ink-soft);margin-top:6px}
 
+/* ---------- музыка ---------- */
+.bgm-btn{
+  position:fixed;z-index:65;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));
+  width:54px;height:54px;display:none;place-items:center;border-radius:50%;
+  background:var(--ivory);border:1px solid var(--line);color:var(--emerald);
+  box-shadow:var(--shadow-m);
+  transition:background .3s var(--ease),color .3s var(--ease),transform .3s var(--ease);
+}
+.bgm-btn.ready{display:grid}
+.bgm-btn:hover{background:var(--emerald);color:var(--ivory);transform:translateY(-2px)}
+.bgm-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+/* ойнап тұрса — эквалайзер, тоқтаса — сызылған динамик */
+.bgm-btn .icon-on{display:none}
+.bgm-btn .icon-off{display:none}
+.bgm-btn.paused .icon-off{display:block}
+.bgm-btn.paused .bars{display:none}
+.bgm-btn .bars{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:16px;pointer-events:none}
+.bgm-btn .bars i{
+  width:2.5px;background:var(--gold);border-radius:2px;
+  transform-origin:bottom;animation:eq 1.05s var(--ease) infinite;
+}
+.bgm-btn .bars i:nth-child(1){height:9px;animation-delay:0s}
+.bgm-btn .bars i:nth-child(2){height:16px;animation-delay:.22s}
+.bgm-btn .bars i:nth-child(3){height:11px;animation-delay:.44s}
+.bgm-btn:hover .bars i{background:var(--gold-soft)}
+@keyframes eq{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+@media (max-width:640px){
+  .bgm-btn{width:50px;height:50px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+
 /* ---------- футер ---------- */
 footer{text-align:center;padding:clamp(50px,7vw,76px) 22px calc(46px + env(safe-area-inset-bottom));
   background:var(--emerald-deep);color:#fff}
@@ -385,6 +416,7 @@ footer .heart{margin-top:26px;font-size:12px;color:rgba(255,255,255,.4)}
   .d-item:hover,.map-card:hover,.map-btn:hover{transform:none}
 }
 @media (prefers-reduced-motion:reduce){
+  .bgm-btn .bars i{animation:none}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none!important;transition:none!important}
   .fx,.reveal-up{opacity:1!important;transform:none!important}
@@ -643,6 +675,13 @@ footer .heart{margin-top:26px;font-size:12px;color:rgba(255,255,255,.4)}
   </div>
 </section>
 
+<audio id="bgm" loop preload="auto" src="ak-koilek.mp3"></audio>
+<button class="bgm-btn" id="bgmBtn" type="button" aria-label="Әнді қосу немесе өшіру" title="Ән">
+  <span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>
+  <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+  <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-5 6M17 9l5 6"/></svg>
+</button>
+
 <footer>
   <svg class="ornament draw fx" width="160" height="32" viewBox="0 0 160 32" role="presentation" style="color:#e3c48d">
     <path style="--len:190" d="M80 16c-8-9-19-9-23-2.5-3.5 5.5 2 10.5 7 8 4.5-2 5-8 .5-11.5"/>
@@ -812,6 +851,72 @@ footer .heart{margin-top:26px;font-size:12px;color:rgba(255,255,255,.4)}
   document.getElementById("yes").addEventListener("change", syncGoing);
   document.getElementById("no").addEventListener("change", syncGoing);
   syncGoing();
+
+  /* ---------- Ән (фондық музыка) ---------- */
+  (function music(){
+    var au = document.getElementById("bgm"), btn = document.getElementById("bgmBtn");
+    var VOL = 0.55, armed = false, killed = false;
+
+    /* файл жоқ болса — батырма мүлдем көрсетілмейді */
+    function ready(){ if(!killed) btn.classList.add("ready"); }
+    au.addEventListener("error", function(){ killed = true; btn.classList.remove("ready"); });
+    ["loadeddata","canplay","canplaythrough","playing"].forEach(function(ev){
+      au.addEventListener(ev, ready);
+    });
+    if(au.readyState >= 2) ready();          /* оқиға ерте өтіп кетсе де */
+
+    function fadeIn(){
+      au.volume = 0;
+      var t = setInterval(function(){
+        au.volume = Math.min(VOL, au.volume + 0.05);
+        if(au.volume >= VOL) clearInterval(t);
+      }, 90);
+    }
+    function start(){
+      if(killed) return;
+      var p = au.play();
+      if(p && p.catch) p.catch(arm);          /* браузер тыйым салса — бірінші тиюді күтеміз */
+      else if(au.paused) arm();
+    }
+    /* браузерлер дыбысты өздігінен қоспайды: алғашқы тиюде іске қосамыз */
+    function arm(){
+      if(armed || killed) return;
+      armed = true;
+      btn.classList.add("paused");
+      var go = function(){
+        au.play().then(function(){
+          btn.classList.remove("paused");
+        }).catch(function(){});
+        off();
+      };
+      var off = function(){
+        ["pointerdown","touchstart","keydown","scroll"].forEach(function(ev){
+          window.removeEventListener(ev, go);
+        });
+      };
+      ["pointerdown","touchstart","keydown","scroll"].forEach(function(ev){
+        window.addEventListener(ev, go, {once:false, passive:true});
+      });
+    }
+
+    au.addEventListener("play",  function(){ btn.classList.remove("paused"); });
+    au.addEventListener("pause", function(){ btn.classList.add("paused"); });
+
+    btn.addEventListener("click", function(){
+      if(au.paused){ au.play().catch(function(){}); }
+      else { au.pause(); }
+    });
+
+    /* бет жасырылса — тоқтатамыз, қайтып келгенде жалғастырамыз */
+    var wasPlaying = false;
+    document.addEventListener("visibilitychange", function(){
+      if(document.hidden){ wasPlaying = !au.paused; au.pause(); }
+      else if(wasPlaying){ au.play().catch(function(){}); }
+    });
+
+    fadeIn();
+    start();
+  })();
 
   /* ---------- WhatsApp ---------- */
   var PHONE = "77007626282";
